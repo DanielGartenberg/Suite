@@ -75,10 +75,6 @@ public struct Gestalt {
 	static public var deviceName: String { rawDeviceType }
 	#endif
 	
-	#if os(watchOS)
-		public static var isOnMac: Bool { return false }
-	#endif
-	
 	#if os(iOS)
 		static public var deviceName: String { UIDevice.current.name }
 		#if targetEnvironment(macCatalyst)
@@ -93,42 +89,37 @@ public struct Gestalt {
 			return Int(UIDevice.current.systemVersion.components(separatedBy: ".").first ?? "") ?? 0
 		}()
 	
-		enum SimulatorHostInfo: Int32 { case Sysname = 0, Nodename, Release, Version, Machine }
+		enum SimulatorHostInfo: Int, CaseIterable { case sysname = 0, nodename, release, version, machine }
 		static func getSimulatorHostInfo(which: SimulatorHostInfo) -> String? {
 			let structSize = MemoryLayout<utsname>.size
-			let fieldSize = structSize / 5
+			let fieldSize = structSize / SimulatorHostInfo.allCases.count
 			var systemInfo = [UInt8](repeating: 0, count: structSize)
 			
 			let info = systemInfo.withUnsafeMutableBufferPointer { ( body: inout UnsafeMutableBufferPointer<UInt8>) -> String? in
 				var valid = false
-				body.baseAddress?.withMemoryRebound(to: utsname.self, capacity: 1) { data in
+				guard let base = body.baseAddress else { return nil }
+				base.withMemoryRebound(to: utsname.self, capacity: 1) { data in
 					valid = uname(data) == 0
 				}
 
 				if !valid { return nil }
 
-				var result: String? = nil
-				
-				body.baseAddress?.withMemoryRebound(to: CChar.self, capacity: 1) { data in
-					result = String(validatingUTF8: &data[Int(which.rawValue) * fieldSize])
-				}
-				return result
+				let all = Array(body)
+				let offset = which.rawValue * fieldSize
+				let chunk = Array(all[offset..<(offset + fieldSize)])
+				let count = chunk.firstIndex(where: { $0 == 0 }) ?? fieldSize
+				return String(bytes: chunk[0..<count], encoding: .utf8)
 			}
 			return info
 		}
-		public static var simulatorMachineName: String? { return self.getSimulatorHostInfo(which: .Nodename) }
-		public static var simulatorSystemName: String? { return self.getSimulatorHostInfo(which: .Sysname) }
-		public static var simulatorReleaseName: String? { return self.getSimulatorHostInfo(which: .Release) }
-		public static var simulatorVersionName: String? { return self.getSimulatorHostInfo(which: .Version) }
-		public static var simulatorCPUName: String? { return self.getSimulatorHostInfo(which: .Machine) }
+		public static var simulatorMachineName: String? { return self.getSimulatorHostInfo(which: .nodename) }
+		public static var simulatorSystemName: String? { return self.getSimulatorHostInfo(which: .sysname) }
+		public static var simulatorReleaseName: String? { return self.getSimulatorHostInfo(which: .release) }
+		public static var simulatorVersionName: String? { return self.getSimulatorHostInfo(which: .version) }
+		public static var simulatorCPUName: String? { return self.getSimulatorHostInfo(which: .machine) }
 
 		public static var simulatorInfo: String {
-			let pieces: [SimulatorHostInfo] = [.Nodename, .Sysname, .Release, .Version, .Machine ]
-			var result = ""
-			for piece in pieces {
-				if let info = self.getSimulatorHostInfo(which: piece) { result += (result.isEmpty ? "" : "- ") + info }
-			}
-			return result
+			SimulatorHostInfo.allCases.map { getSimulatorHostInfo(which: $0) }.compactMap { $0 }.joined(separator: "- ")
 		}
 
 	#endif
@@ -143,6 +134,10 @@ public struct Gestalt {
 				return identifier + String(UnicodeScalar(UInt8(value)))
 			}
 			return identifier
+		}
+	
+		public static var modelName: String {
+			convertRawDeviceTypeToModelName(rawDeviceType) ?? "unknown"
 		}
 	
 		public static func convertRawDeviceTypeToModelName(_ raw: String) -> String? {
@@ -185,7 +180,8 @@ public struct Gestalt {
 			case "iPad4,4", "iPad4,5", "iPad4,6":     return "iPad Mini 2"
 			case "iPad4,7", "iPad4,8", "iPad4,9":     return "iPad Mini 3"
 			case "iPad5,1", "iPad5,2":                return "iPad Mini 4"
-			case "iPad2,1", "iPad2,2", "iPad2,3", "iPad2,4":return "iPad 2"
+			case "iPad2,1", "iPad2,2", "iPad2,3", "iPad2,4":
+																	return "iPad 2"
 			case "iPad3,1", "iPad3,2", "iPad3,3":     return "iPad 3"
 			case "iPad3,4", "iPad3,5", "iPad3,6":     return "iPad 4"
 			case "iPad4,1", "iPad4,2", "iPad4,3":     return "iPad Air"
@@ -193,8 +189,10 @@ public struct Gestalt {
 			case "iPad6,4":									return "iPad Pro 9.7 in."
 			case "iPad6,7", "iPad6,8":                return "iPad Pro 12.9 in."
 			case "iPad7,4":									return "iPad Pro 10.5 in."
-			case "iPad8,1", "iPad8,2", "iPad8,3", "iPad8,4":return "iPad Pro 11 in."
-			case "iPad8,5", "iPad8,6", "iPad8,7", "iPad8,8":return "iPad Pro 12.9 in."
+			case "iPad8,1", "iPad8,2", "iPad8,3", "iPad8,4":
+																	return "iPad Pro 11 in."
+			case "iPad8,5", "iPad8,6", "iPad8,7", "iPad8,8":
+																	return "iPad Pro 12.9 in."
 			case "iPad8,10":									return "iPad Pro 11 in. 4th gen"
 			case "iPad8,11", "iPad8,12":					return "iPad Pro 12.9 in. 4th gen"
 			case "iPad11,3", "iPad11,4": 					return "iPad Air 3"
@@ -202,8 +200,8 @@ public struct Gestalt {
 			case "iPad11,6", "iPad11,7": 					return "iPad 8th gen"
 			case "iPad13,1", "iPad13,2": 					return "iPad air 4th gen"
 
-			case "Watch1,1": 									return "Apple Watch 38mm"
-			case "Watch1,2": 									return "Apple Watch 42mm"
+			case "Watch1,1": 									return "Apple Watch Series 0 38mm"
+			case "Watch1,2": 									return "Apple Watch Series 0 42mm"
 			case "Watch2,6": 									return "Apple Watch Series 1 38mm"
 			case "Watch2,7": 									return "Apple Watch Series 1 42mm"
 			case "Watch2,3": 									return "Apple Watch Series 2 38mm"
@@ -214,9 +212,14 @@ public struct Gestalt {
 			case "Watch4,2", "Watch4,4": 					return "Apple Watch Series 4 44mm"
 			case "Watch5,1", "Watch5,3": 					return "Apple Watch Series 5 40mm"
 			case "Watch5,2", "Watch5,4": 					return "Apple Watch Series 5 44mm"
+
+			case "Watch5,9", "Watch5,11":					return "Apple Watch SE 40mm"
+			case "Watch5,10", "Watch5,12":				return "Apple Watch SE 44mm"
+
 			case "Watch6,1", "Watch6,3": 					return "Apple Watch Series 6 40mm"
 			case "Watch6,2", "Watch6,4": 					return "Apple Watch Series 6 44mm"
-			case "Watch5,11", "Watch5,12": 				return "Apple Watch SE"
+			case "Watch6,6", "Watch6,8": 					return "Apple Watch Series 7 41mm"
+			case "Watch6,7", "Watch6,9": 					return "Apple Watch Series 7 45mm"
 
 			case "AppleTV1,1": 								return "Apple TV 1st gen"
 			case "AppleTV2,1": 								return "Apple TV 2nd gen"

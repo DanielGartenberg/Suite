@@ -21,7 +21,9 @@ public extension NSManagedObject {
 				if let value = strategy.jsonValue(from: date) {
 					results[name] = value
 				}
-			} else {
+            } else if attr.attributeType == .booleanAttributeType {
+                results[name] = (raw as? Int) == 1
+            } else {
 				results[name] = raw
 			}
 		}
@@ -48,12 +50,21 @@ public extension NSManagedObject {
 				value = URL(string: value as? String ?? "")
 			}
 			if let raw = value {
-				self.setPrimitiveValue(raw, forKey: name)
+				self.setValue(raw, forKey: name)
 			} else if !combining {
-				self.setPrimitiveValue(nil, forKey: name)
+				self.setValue(nil, forKey: name)
 			}
 		}
 	}
+    
+    func build<Object: Decodable>(dateStrategy: JSONDecoder.DateDecodingStrategy = .default) throws -> Object {
+        let dictionary = self.dictionary(dateStrategy: dateStrategy.encodingStrategy)
+        let rawJSON = try JSONSerialization.data(withJSONObject: dictionary, options: [.prettyPrinted])
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = dateStrategy
+        return try decoder.decode(Object.self, from: rawJSON)
+    }
 }
 
 extension NSAttributeDescription {
